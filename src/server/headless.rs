@@ -565,11 +565,11 @@ impl HeadlessServer {
                     needs_full_render = true;
                     crate::render_prof::event("full_render_cause.generic_dirty");
                 }
-                let (sidebar_title_changed, outer_title_synced) =
+                let (title_render_changed, outer_title_synced) =
                     self.sync_terminal_title_sources(&render_request.terminal_title_sources);
-                if sidebar_title_changed {
+                if title_render_changed {
                     needs_full_render = true;
-                    crate::render_prof::event("full_render_cause.terminal_title_sidebar");
+                    crate::render_prof::event("full_render_cause.terminal_title");
                 }
                 if needs_full_render && !outer_title_synced {
                     self.sync_window_title();
@@ -1416,7 +1416,7 @@ impl HeadlessServer {
 
     /// Pulls only titles reported dirty by the PTY parser. A focused pane title
     /// is forwarded as an independent client side effect; only sidebar title
-    /// tokens require a UI render.
+    /// tokens and visible pane border labels require a UI render.
     fn sync_terminal_title_sources(
         &mut self,
         sources: &HashSet<crate::layout::PaneId>,
@@ -1439,8 +1439,10 @@ impl HeadlessServer {
         if outer_title_synced {
             self.sync_window_title();
         }
+        let visible_pane_border_changed = !changes.pane_border_changed.is_empty()
+            && self.pty_sources_visible_to_any_render_target(&changes.pane_border_changed);
         (
-            self.app.terminal_title_sidebar_changed(&changes),
+            self.app.terminal_title_sidebar_changed(&changes) || visible_pane_border_changed,
             outer_title_synced,
         )
     }

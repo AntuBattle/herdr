@@ -513,6 +513,65 @@ async fn focused_terminal_title_syncs_without_requesting_a_sidebar_render() {
     shutdown_test_runtimes(&mut server);
 }
 
+#[tokio::test]
+async fn visible_pane_border_title_change_requests_a_full_render() {
+    let (mut server, _control_rx) = window_title_test_server();
+    let background_tab = server.app.state.workspaces[0].test_add_tab(Some("background"));
+    server.app.state.ensure_test_terminals();
+    let visible_pane = server.app.state.workspaces[0].tabs[0].root_pane;
+    let hidden_pane = server.app.state.workspaces[0].tabs[background_tab].root_pane;
+    let mut terminal_ids = Vec::new();
+    for pane_id in [visible_pane, hidden_pane] {
+        let terminal_id = server.app.state.workspaces[0]
+            .terminal_id(pane_id)
+            .expect("terminal")
+            .clone();
+        server
+            .app
+            .state
+            .terminals
+            .get_mut(&terminal_id)
+            .expect("terminal state")
+            .set_detected_state(
+                Some(crate::detect::Agent::Claude),
+                crate::detect::AgentState::Working,
+            );
+        server.app.terminal_runtimes.insert(
+            terminal_id.clone(),
+            crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, b""),
+        );
+        terminal_ids.push(terminal_id);
+    }
+    let write_title = |server: &HeadlessServer, index: usize, title: &str| {
+        server
+            .app
+            .terminal_runtimes
+            .get(&terminal_ids[index])
+            .expect("runtime")
+            .test_process_pty_bytes(title.as_bytes());
+    };
+
+    write_title(&server, 0, "\x1b]0;◐ Fix login bug\x07");
+    assert_eq!(
+        server.sync_terminal_title_sources(&HashSet::from([visible_pane])),
+        (true, false)
+    );
+
+    write_title(&server, 0, "\x1b]0;◓ Fix login bug\x07");
+    assert_eq!(
+        server.sync_terminal_title_sources(&HashSet::from([visible_pane])),
+        (false, false)
+    );
+
+    write_title(&server, 1, "\x1b]0;◐ Background task\x07");
+    assert_eq!(
+        server.sync_terminal_title_sources(&HashSet::from([hidden_pane])),
+        (false, false)
+    );
+
+    shutdown_test_runtimes(&mut server);
+}
+
 #[test]
 fn a_foreground_client_without_a_writer_does_not_cache_the_window_title() {
     let (mut server, _control_rx) = window_title_test_server();

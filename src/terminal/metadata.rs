@@ -675,6 +675,33 @@ mod tests {
     }
 
     #[test]
+    fn metadata_title_beats_manual_label_and_terminal_title_on_pane_border() {
+        let mut terminal = test_terminal();
+        terminal.set_detected_state(Some(Agent::Claude), AgentState::Working);
+        terminal.set_terminal_title(Some("◐ Terminal task".into()));
+        terminal.set_manual_label("manual".into());
+        terminal.set_agent_metadata(AgentMetadataReport {
+            source: "user:presentation".into(),
+            agent_label: Some("claude".into()),
+            applies_to_source: None,
+            title: Some("Prompt title".into()),
+            display_agent: None,
+            state_labels: HashMap::new(),
+            clear_title: false,
+            clear_display_agent: false,
+            clear_state_labels: false,
+            ttl: None,
+            seq: None,
+        });
+
+        assert_eq!(
+            terminal.border_label(false).as_deref(),
+            Some("Prompt title")
+        );
+        assert_eq!(terminal.border_label(true).as_deref(), Some("Prompt title"));
+    }
+
+    #[test]
     fn metadata_without_sequence_can_update_same_source() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(

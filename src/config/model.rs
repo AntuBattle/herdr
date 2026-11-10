@@ -978,7 +978,8 @@ pub struct UiConfig {
     pub pane_scrollbars: bool,
     /// Keep split panes visually separated instead of sharing divider borders. Default: true.
     pub pane_gaps: bool,
-    /// Show agent labels in split pane borders when no manual pane label is set. Default: false.
+    /// Show agent labels in split pane borders when no reported title, manual pane label, or
+    /// agent terminal title is set. Default: false.
     pub show_agent_labels_on_pane_borders: bool,
     /// Hide the tab row when the workspace has one tab. Default: false.
     pub hide_tab_bar_when_single_tab: bool,

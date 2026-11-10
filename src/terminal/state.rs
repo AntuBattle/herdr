@@ -2388,9 +2388,19 @@ impl TerminalState {
         }
     }
 
+    /// Precedence: reported metadata title, manual label, the agent's own
+    /// terminal title (agent panes only, so shell prompt titles stay off
+    /// borders), then the agent label when `show_agent_labels` is set.
     pub fn border_label(&self, show_agent_labels: bool) -> Option<String> {
-        self.effective_title().or_else(|| {
-            self.manual_label.clone().or_else(|| {
+        self.effective_title()
+            .or_else(|| self.manual_label.clone())
+            .or_else(|| {
+                self.effective_agent_label()
+                    .is_some()
+                    .then(|| self.terminal_title_stripped())
+                    .flatten()
+            })
+            .or_else(|| {
                 show_agent_labels
                     .then(|| {
                         self.effective_display_agent()
@@ -2398,7 +2408,6 @@ impl TerminalState {
                     })
                     .flatten()
             })
-        })
     }
 
     fn recompute_effective_state(
@@ -4254,6 +4263,76 @@ mod tests {
         terminal.set_manual_label("reviewer".into());
         terminal.clear_manual_label();
         assert_eq!(terminal.border_label(true).as_deref(), Some("claude"));
+    }
+
+    #[test]
+    fn border_label_shows_stripped_terminal_title_for_detected_agent_pane() {
+        let mut terminal = test_terminal();
+        terminal.set_detected_state(Some(Agent::Claude), AgentState::Working);
+        terminal.set_terminal_title(Some("◐ Fix login bug".into()));
+
+        assert_eq!(
+            terminal.border_label(false).as_deref(),
+            Some("Fix login bug")
+        );
+        assert_eq!(
+            terminal.border_label(true).as_deref(),
+            Some("Fix login bug")
+        );
+    }
+
+    #[test]
+    fn border_label_shows_terminal_title_for_hook_reported_agent_pane() {
+        let mut terminal = test_terminal();
+        terminal.set_hook_authority(
+            "herdr:custom".into(),
+            "custom-agent".into(),
+            AgentState::Working,
+            None,
+            None,
+        );
+        terminal.set_terminal_title(Some("Refactor parser".into()));
+
+        assert_eq!(
+            terminal.border_label(false).as_deref(),
+            Some("Refactor parser")
+        );
+    }
+
+    #[test]
+    fn border_label_prefers_manual_label_over_terminal_title() {
+        let mut terminal = test_terminal();
+        terminal.set_detected_state(Some(Agent::Claude), AgentState::Working);
+        terminal.set_terminal_title(Some("◐ Fix login bug".into()));
+        terminal.set_manual_label("reviewer".into());
+
+        assert_eq!(terminal.border_label(false).as_deref(), Some("reviewer"));
+        assert_eq!(terminal.border_label(true).as_deref(), Some("reviewer"));
+    }
+
+    #[test]
+    fn border_label_ignores_terminal_title_of_shell_pane() {
+        let mut terminal = test_terminal();
+        terminal.set_terminal_title(Some("user@host:~".into()));
+
+        assert_eq!(terminal.border_label(false), None);
+        assert_eq!(terminal.border_label(true), None);
+    }
+
+    #[test]
+    fn border_label_falls_through_to_agent_label_when_terminal_title_is_glyph_only_or_blank() {
+        let mut terminal = test_terminal();
+        terminal.set_detected_state(Some(Agent::Claude), AgentState::Working);
+
+        for title in ["✳", "⠋ ", "   "] {
+            terminal.set_terminal_title(Some(title.into()));
+            assert_eq!(terminal.border_label(false), None, "title {title:?}");
+            assert_eq!(
+                terminal.border_label(true).as_deref(),
+                Some("claude"),
+                "title {title:?}"
+            );
+        }
     }
 
     #[test]

@@ -7,6 +7,9 @@ use crate::layout::PaneId;
 pub(crate) struct TerminalTitleChanges {
     pub(crate) raw_changed: bool,
     pub(crate) stripped_changed: bool,
+    /// Panes whose border label changed with the title, so their border
+    /// must be redrawn by a full render.
+    pub(crate) pane_border_changed: HashSet<PaneId>,
 }
 
 impl App {
@@ -26,7 +29,8 @@ impl App {
     pub(crate) fn sync_pending_terminal_titles(&mut self) -> TerminalTitleChanges {
         let sources = self.render_dirty.pending_terminal_title_sources();
         let changes = self.sync_terminal_titles(&sources);
-        if self.terminal_title_sidebar_changed(&changes) {
+        if self.terminal_title_sidebar_changed(&changes) || !changes.pane_border_changed.is_empty()
+        {
             self.render_dirty.request_generic();
             self.render_notify.notify_one();
         }
@@ -55,16 +59,21 @@ impl App {
             observations.push((ws_idx, *pane_id, terminal_id, runtime.terminal_title()));
         }
 
+        let show_agent_labels = self.state.show_agent_labels_on_pane_borders;
         let mut changes = TerminalTitleChanges::default();
         let mut publish = Vec::new();
         for (ws_idx, pane_id, terminal_id, title) in observations {
             let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
                 continue;
             };
+            let previous_border_label = terminal.border_label(show_agent_labels);
             let change = terminal.set_terminal_title(title);
             changes.raw_changed |= change.raw_changed;
             changes.stripped_changed |= change.stripped_changed;
             if change.stripped_changed {
+                if terminal.border_label(show_agent_labels) != previous_border_label {
+                    changes.pane_border_changed.insert(pane_id);
+                }
                 publish.push((ws_idx, pane_id));
             }
         }
@@ -115,6 +124,7 @@ mod tests {
             TerminalTitleChanges {
                 raw_changed: true,
                 stripped_changed: true,
+                pane_border_changed: HashSet::from([pane_id]),
             }
         );
         let pane = app.pane_info(0, pane_id).unwrap();
@@ -136,6 +146,7 @@ mod tests {
             TerminalTitleChanges {
                 raw_changed: true,
                 stripped_changed: false,
+                pane_border_changed: HashSet::new(),
             }
         );
         let pane = app.pane_info(0, pane_id).unwrap();
@@ -195,6 +206,104 @@ mod tests {
         assert!(changes.stripped_changed);
         let render_request = app.render_dirty.take();
         assert!(render_request.generic);
+    }
+
+    fn agent_title_test_app() -> (App, PaneId, crate::terminal::TerminalId) {
+        let event_hub = crate::api::EventHub::default();
+        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(
+            &Config::default(),
+            crate::app::AppPolicy::TEST,
+            None,
+            api_rx,
+            event_hub,
+        );
+        app.state.workspaces = vec![Workspace::test_new("one")];
+        app.state.active = Some(0);
+        app.state.ensure_test_terminals();
+        app.state.sidebar_agents.rows = vec![vec![crate::config::AgentSidebarToken::Agent]];
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = app.state.workspaces[0]
+            .terminal_id(pane_id)
+            .unwrap()
+            .clone();
+        app.state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(Some(Agent::Claude), AgentState::Working);
+        app.terminal_runtimes.insert(
+            terminal_id.clone(),
+            crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, b""),
+        );
+        (app, pane_id, terminal_id)
+    }
+
+    #[tokio::test]
+    async fn title_sync_reports_panes_whose_border_label_changed() {
+        let (mut app, pane_id, terminal_id) = agent_title_test_app();
+        let sources = HashSet::from([pane_id]);
+        let write_title = |app: &App, bytes: &str| {
+            app.terminal_runtimes
+                .get(&terminal_id)
+                .unwrap()
+                .test_process_pty_bytes(bytes.as_bytes());
+        };
+
+        write_title(&app, "\x1b]0;◐ Fix login bug\x07");
+        assert_eq!(
+            app.sync_terminal_titles(&sources).pane_border_changed,
+            HashSet::from([pane_id])
+        );
+
+        write_title(&app, "\x1b]0;◓ Fix login bug\x07");
+        assert!(app
+            .sync_terminal_titles(&sources)
+            .pane_border_changed
+            .is_empty());
+
+        app.state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_manual_label("reviewer".into());
+        write_title(&app, "\x1b]0;◐ Another task\x07");
+        let changes = app.sync_terminal_titles(&sources);
+        assert!(changes.stripped_changed);
+        assert!(changes.pane_border_changed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn title_sync_ignores_border_of_shell_pane() {
+        let (mut app, pane_id, terminal_id) = agent_title_test_app();
+        app.state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_detected_state(None, AgentState::Unknown);
+        app.terminal_runtimes
+            .get(&terminal_id)
+            .unwrap()
+            .test_process_pty_bytes(b"\x1b]0;user@host:~\x07");
+
+        let changes = app.sync_terminal_titles(&HashSet::from([pane_id]));
+
+        assert!(changes.stripped_changed);
+        assert!(changes.pane_border_changed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn syncing_pending_titles_requests_render_for_pane_border_change() {
+        let (mut app, pane_id, terminal_id) = agent_title_test_app();
+        app.terminal_runtimes
+            .get(&terminal_id)
+            .unwrap()
+            .test_process_pty_bytes("\x1b]0;◐ Fix login bug\x07".as_bytes());
+        app.render_dirty.request_terminal_title(pane_id);
+
+        app.sync_pending_terminal_titles();
+
+        assert!(app.render_dirty.take().generic);
     }
 
     #[test]
