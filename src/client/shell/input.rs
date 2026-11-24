@@ -380,7 +380,13 @@ impl ClientShellState {
             self.copy_input_queue.push_back(key);
             return;
         }
-        let key = if self.host_reports_key_releases && key.generated_text.is_some() {
+        let reported_key = key
+            .vt_bytes()
+            .is_some_and(|bytes| bytes.starts_with(b"\x1b[") && bytes.ends_with(b"u"));
+        let key = if self.host_reports_key_releases
+            && (key.generated_text.is_some()
+                || (reported_key && self.config.keybinds.matches_prefix(&key)))
+        {
             key.with_physical_identity_hint(true)
         } else {
             key

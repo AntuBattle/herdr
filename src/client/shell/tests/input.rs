@@ -1124,6 +1124,37 @@ fn every_configured_prefix_enters_prefix_mode() {
     }
 }
 
+#[test]
+fn held_reported_prefix_does_not_send_a_literal_prefix() {
+    let mut state = report_all_kitty_host_state(snapshot());
+    let first = state.handle_input_bytes(b"\x1b[98;5u");
+    assert_eq!(state.mode, ClientShellMode::Prefix);
+    assert!(pane_key_events(&first).is_empty());
+
+    let held = state.handle_input_bytes(b"\x1b[98;5u");
+    assert_eq!(state.mode, ClientShellMode::Prefix);
+    assert!(pane_key_events(&held).is_empty());
+
+    let _ = state.handle_input_bytes(b"\x1b[98;5:3u");
+    let second = state.handle_input_bytes(b"\x1b[98;5u");
+    assert_eq!(state.mode, ClientShellMode::Terminal);
+    assert_eq!(
+        pane_key_events(&second).len(),
+        1,
+        "a new press sends the prefix"
+    );
+}
+
+#[test]
+fn legacy_double_prefix_still_sends_a_literal_prefix() {
+    let mut state = report_all_kitty_host_state(snapshot());
+    let _ = state.handle_input_bytes(b"\x02");
+    assert_eq!(state.mode, ClientShellMode::Prefix);
+    let second = state.handle_input_bytes(b"\x02");
+    assert_eq!(state.mode, ClientShellMode::Terminal);
+    assert_eq!(pane_key_events(&second).len(), 1);
+}
+
 fn pane_text_commits(outcome: &ClientShellInput) -> Vec<String> {
     outcome
         .requests
