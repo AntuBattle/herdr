@@ -36,7 +36,12 @@ impl App {
     pub(crate) fn shutdown_detached_terminal_runtimes(&mut self) {
         let terminal_ids = std::mem::take(&mut self.state.terminal_runtime_shutdowns);
         for terminal_id in terminal_ids {
-            self.shutdown_terminal_runtime(terminal_id);
+            if let Some(runtime) = self.terminal_runtimes.remove(&terminal_id) {
+                // Process termination can wait through several grace periods.
+                // Keep ownership until cleanup finishes without blocking API
+                // responses, layout updates, or input in remaining terminals.
+                tokio::task::spawn_blocking(move || runtime.shutdown());
+            }
         }
     }
 
@@ -236,6 +241,60 @@ mod tests {
         let interrupted = std::io::Error::new(std::io::ErrorKind::Interrupted, "test interrupt");
 
         assert!(retain_detached_process_after_wait(42, Err(interrupted)));
+    }
+
+    #[test]
+    fn detached_terminal_cleanup_does_not_block_server_or_drop_runtime_early() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .expect("test runtime");
+        runtime.block_on(async {
+            // Occupy the only blocking worker so cleanup cannot start until
+            // after the server has processed the detached terminal.
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let worker = tokio::task::spawn_blocking(move || {
+                started_tx.send(()).expect("worker start notification");
+                release_rx.recv().expect("worker release");
+            });
+            started_rx.await.expect("worker started");
+
+            let (mut app, pane_id) = test_app_with_pane();
+            let terminal_id = app.state.workspaces[0].panes[&pane_id]
+                .attached_terminal_id
+                .clone();
+            let (terminal, mut input_rx) =
+                crate::terminal::TerminalRuntime::test_with_channel(80, 24);
+            app.terminal_runtimes.insert(terminal_id.clone(), terminal);
+            app.state
+                .terminal_runtime_shutdowns
+                .push(terminal_id.clone());
+
+            app.shutdown_detached_terminal_runtimes();
+            let removed = app.terminal_runtimes.get(&terminal_id).is_none();
+            let drained = app.state.terminal_runtime_shutdowns.is_empty();
+            // Let aborted detector/compression tasks release their terminal
+            // references, so they cannot mask an early runtime drop.
+            tokio::task::yield_now().await;
+            let pending_input = input_rx.try_recv();
+
+            // Release before asserting so a failing test cannot strand a
+            // blocking worker during Tokio runtime shutdown.
+            release_tx.send(()).expect("release cleanup worker");
+            worker.await.expect("blocking worker finished");
+            assert!(removed);
+            assert!(drained);
+            assert_eq!(
+                pending_input,
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            );
+            let received = tokio::time::timeout(Duration::from_secs(5), input_rx.recv())
+                .await
+                .expect("cleanup should finish");
+            assert_eq!(received, None);
+        });
     }
 
     fn test_app_with_pane() -> (super::super::App, crate::layout::PaneId) {
