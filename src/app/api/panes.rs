@@ -771,6 +771,34 @@ impl App {
         )
     }
 
+    pub(super) fn handle_pane_rotate_split(
+        &mut self,
+        id: String,
+        params: PaneLayoutParams,
+    ) -> String {
+        let Some((ws_idx, pane_id)) = self.resolve_optional_pane(params.pane_id.as_deref()) else {
+            return encode_error(id, "pane_not_found", "pane not found");
+        };
+        let Some(tab_idx) = self.state.workspaces[ws_idx].find_tab_index_for_pane(pane_id) else {
+            return encode_error(id, "pane_not_found", "pane not found");
+        };
+        let changed = {
+            let tab = &mut self.state.workspaces[ws_idx].tabs[tab_idx];
+            tab.layout.rotate_split_containing(pane_id)
+        };
+        if changed {
+            self.state.mark_session_dirty();
+            self.schedule_session_save();
+        }
+        let Some(layout) = self.pane_layout_snapshot(ws_idx, tab_idx) else {
+            return encode_error(id, "pane_layout_unavailable", "pane layout unavailable");
+        };
+        if changed {
+            self.emit_layout_updated_snapshot(layout.clone());
+        }
+        encode_success(id, ResponseResult::PaneLayout { layout })
+    }
+
     pub(super) fn handle_pane_swap(&mut self, id: String, params: PaneSwapParams) -> String {
         let directional = params.direction.is_some();
         let explicit = params.source_pane_id.is_some() || params.target_pane_id.is_some();
@@ -3180,6 +3208,50 @@ mod tests {
         );
 
         assert_eq!(metadata_error_code(&response), "pane_not_found");
+    }
+
+    #[test]
+    fn api_pane_rotate_split_toggles_geometry_without_changing_panes_or_focus() {
+        let mut app = app_with_linked_worktree();
+        let root = app.state.workspaces[0].tabs[0].root_pane;
+        let second = app.state.workspaces[0].test_split(ratatui::layout::Direction::Horizontal);
+        let root_public = app.public_pane_id(0, root).unwrap();
+        let second_public = app.public_pane_id(0, second).unwrap();
+        crate::ui::compute_view_with_runtime_registry(
+            &mut app.state,
+            &crate::terminal::TerminalRuntimeRegistry::new(),
+            ratatui::layout::Rect::new(0, 0, 100, 20),
+        );
+        let focused_before = app.state.workspaces[0].focused_pane_id();
+        let params = PaneLayoutParams {
+            pane_id: Some(root_public.clone()),
+        };
+        let response = app.handle_pane_rotate_split("req".into(), params.clone());
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        let ResponseResult::PaneLayout { layout } = success.result else {
+            panic!("expected pane layout response");
+        };
+        assert_eq!(
+            layout.splits[0].direction,
+            crate::api::schema::SplitDirection::Down
+        );
+        assert_eq!(layout.panes.len(), 2);
+        assert!(layout.panes.iter().any(|pane| pane.pane_id == root_public));
+        assert!(layout
+            .panes
+            .iter()
+            .any(|pane| pane.pane_id == second_public));
+        assert_eq!(app.state.workspaces[0].focused_pane_id(), focused_before);
+
+        let response = app.handle_pane_rotate_split("req".into(), params);
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        let ResponseResult::PaneLayout { layout } = success.result else {
+            panic!("expected pane layout response");
+        };
+        assert_eq!(
+            layout.splits[0].direction,
+            crate::api::schema::SplitDirection::Right
+        );
     }
 
     #[test]

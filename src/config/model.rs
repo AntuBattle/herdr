@@ -428,6 +428,8 @@ pub struct KeysConfig {
     pub swap_pane_up: BindingConfig,
     /// Swap the focused pane with the pane to the right. Default: "prefix+shift+l".
     pub swap_pane_right: BindingConfig,
+    /// Rotate the split containing the focused pane. Default: "prefix+space".
+    pub rotate_focused_split: BindingConfig,
     /// Cycle to the next pane. Default: "prefix+tab".
     pub cycle_pane_next: BindingConfig,
     /// Cycle to the previous pane. Default: "prefix+shift+tab".
@@ -565,6 +567,7 @@ pub(crate) struct KeysConfigOverlay {
     swap_pane_up: Option<BindingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     swap_pane_right: Option<BindingConfig>,
+    rotate_focused_split: Option<BindingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cycle_pane_next: Option<BindingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -690,6 +693,7 @@ impl<'de> Deserialize<'de> for KeysConfig {
         apply_field!(swap_pane_down);
         apply_field!(swap_pane_up);
         apply_field!(swap_pane_right);
+        apply_field!(rotate_focused_split);
         apply_field!(cycle_pane_next);
         apply_field!(cycle_pane_previous);
         apply_field!(last_pane);
@@ -795,6 +799,7 @@ impl KeysConfig {
         copy_effective_action_field!(swap_pane_down, keybinds.swap_pane_down);
         copy_effective_action_field!(swap_pane_up, keybinds.swap_pane_up);
         copy_effective_action_field!(swap_pane_right, keybinds.swap_pane_right);
+        copy_effective_action_field!(rotate_focused_split, keybinds.rotate_focused_split);
         copy_effective_action_field!(cycle_pane_next, keybinds.cycle_pane_next);
         copy_effective_action_field!(cycle_pane_previous, keybinds.cycle_pane_previous);
         copy_effective_action_field!(last_pane, keybinds.last_pane);
@@ -1168,6 +1173,7 @@ impl Default for KeysConfig {
             swap_pane_down: BindingConfig::one("prefix+shift+j"),
             swap_pane_up: BindingConfig::one("prefix+shift+k"),
             swap_pane_right: BindingConfig::one("prefix+shift+l"),
+            rotate_focused_split: BindingConfig::one("prefix+space"),
             cycle_pane_next: BindingConfig::one("prefix+tab"),
             cycle_pane_previous: BindingConfig::one("prefix+shift+tab"),
             last_pane: BindingConfig::empty(),

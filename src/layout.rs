@@ -290,6 +290,34 @@ impl TileLayout {
         true
     }
 
+    /// Rotate the split directly containing a pane, preserving its children and ratio.
+    pub fn rotate_split_containing(&mut self, pane: PaneId) -> bool {
+        fn rotate(node: &mut Node, focused: PaneId) -> bool {
+            match node {
+                Node::Pane(_) => false,
+                Node::Split {
+                    direction,
+                    first,
+                    second,
+                    ..
+                } => {
+                    if matches!(first.as_ref(), Node::Pane(id) if *id == focused)
+                        || matches!(second.as_ref(), Node::Pane(id) if *id == focused)
+                    {
+                        *direction = match direction {
+                            Direction::Horizontal => Direction::Vertical,
+                            Direction::Vertical => Direction::Horizontal,
+                        };
+                        true
+                    } else {
+                        rotate(first, focused) || rotate(second, focused)
+                    }
+                }
+            }
+        }
+        rotate(&mut self.root, pane)
+    }
+
     /// Set the ratio of a split node at the given path.
     pub fn set_ratio_at(&mut self, path: &[bool], ratio: f32) -> bool {
         set_ratio_at(&mut self.root, path, ratio.clamp(0.1, 0.9))
@@ -955,6 +983,36 @@ mod tests {
         let mut out = Vec::new();
         collect(layout.root(), &mut out);
         out
+    }
+
+    #[test]
+    fn rotate_focused_split_preserves_panes_focus_and_ratio() {
+        let (mut layout, first) = TileLayout::new();
+        assert!(!layout.rotate_split_containing(first));
+        let second = layout
+            .split_pane(first, Direction::Horizontal, 0.3)
+            .unwrap();
+        assert!(layout.rotate_split_containing(first));
+        assert_eq!(split_snapshot(&layout), vec![(Direction::Vertical, 0.3)]);
+        assert_eq!(layout.pane_ids(), vec![first, second]);
+        assert_eq!(layout.focused(), first);
+        assert!(layout.rotate_split_containing(first));
+        assert_eq!(split_snapshot(&layout), vec![(Direction::Horizontal, 0.3)]);
+    }
+
+    #[test]
+    fn rotate_focused_split_changes_only_the_nearest_split() {
+        let (mut layout, root) = TileLayout::new();
+        let right = layout.split_pane(root, Direction::Horizontal, 0.6).unwrap();
+        let bottom = layout.split_pane(right, Direction::Vertical, 0.4).unwrap();
+        layout.focus_pane(bottom);
+        assert!(layout.rotate_split_containing(bottom));
+        assert_eq!(
+            split_snapshot(&layout),
+            vec![(Direction::Horizontal, 0.6), (Direction::Horizontal, 0.4)]
+        );
+        assert_eq!(layout.focused(), bottom);
+        assert_eq!(layout.pane_ids(), vec![root, right, bottom]);
     }
 
     #[test]

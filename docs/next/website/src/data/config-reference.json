@@ -764,6 +764,12 @@
           "description": "Swap the focused pane with the pane to the right."
         },
         {
+          "key": "keys.rotate_focused_split",
+          "type": "keybinding",
+          "default": "\"prefix+space\"",
+          "description": "Rotate the split containing the focused pane."
+        },
+        {
           "key": "keys.cycle_pane_next",
           "type": "keybinding",
           "default": "\"prefix+tab\"",

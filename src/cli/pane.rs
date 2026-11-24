@@ -264,6 +264,13 @@ mod tests {
                 json!({"pane_id": "pane"}),
             ),
             (
+                "rotate-split",
+                vec!["--pane", "pane"],
+                "cli:pane:rotate_split",
+                "pane.rotate-split",
+                json!({"pane_id": "pane"}),
+            ),
+            (
                 "process-info",
                 vec!["--pane", "pane"],
                 "cli:pane:process_info",

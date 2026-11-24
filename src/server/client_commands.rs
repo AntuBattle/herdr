@@ -256,6 +256,11 @@ mod tests {
         );
 
         assert_eq!(
+            actual.remove("pane.rotate-split").as_deref(),
+            Some("98ab37957f733ab816f22836aaa20fa47f73dbf10a8b1ddc66aa113895640534")
+        );
+
+        assert_eq!(
             actual, expected,
             "an existing endpoint method changed shape; add load-bearing behavior as a new advertised method or explicitly gate new fields"
         );

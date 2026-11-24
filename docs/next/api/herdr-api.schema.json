@@ -5468,6 +5468,22 @@
         {
           "properties": {
             "method": {
+              "const": "pane.rotate-split",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/PaneLayoutParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "pane.move",
               "type": "string"
             },

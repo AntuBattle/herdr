@@ -504,6 +504,24 @@ pub(super) const LEAVES: &[Leaf] = &[
         },
     },
     Leaf {
+        name: "rotate-split",
+        about: "Rotate the split containing a pane",
+        id: "cli:pane:rotate_split",
+        output: Output::Json,
+        arguments: PaneLayoutProjection::arguments,
+        method: |matches| {
+            let mut params = PaneLayoutProjection::from_matches(matches)?;
+            params.pane_id = super::caller_target(
+                matches,
+                params.pane_id,
+                crate::cli::target::caller_pane_id().as_deref(),
+                false,
+                false,
+            )?;
+            Ok(Method::PaneRotateSplit(params))
+        },
+    },
+    Leaf {
         name: "process-info",
         about: "Show pane process information",
         id: "cli:pane:process_info",

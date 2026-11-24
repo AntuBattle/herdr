@@ -48,6 +48,7 @@ pub(crate) enum KeybindAction {
     SwapPaneDown,
     SwapPaneUp,
     SwapPaneRight,
+    RotateFocusedSplit,
     SplitVertical,
     SplitHorizontal,
     ClosePane,
@@ -131,6 +132,10 @@ pub(crate) fn resolve_non_indexed_action(
         (&keybinds.swap_pane_down, KeybindAction::SwapPaneDown),
         (&keybinds.swap_pane_up, KeybindAction::SwapPaneUp),
         (&keybinds.swap_pane_right, KeybindAction::SwapPaneRight),
+        (
+            &keybinds.rotate_focused_split,
+            KeybindAction::RotateFocusedSplit,
+        ),
         (&keybinds.last_pane, KeybindAction::LastPane),
         (&keybinds.cycle_pane_next, KeybindAction::CyclePaneNext),
         (

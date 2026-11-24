@@ -390,6 +390,7 @@ pub struct Keybinds {
     pub swap_pane_down: ActionKeybinds,
     pub swap_pane_up: ActionKeybinds,
     pub swap_pane_right: ActionKeybinds,
+    pub rotate_focused_split: ActionKeybinds,
     pub cycle_pane_next: ActionKeybinds,
     pub cycle_pane_previous: ActionKeybinds,
     pub last_pane: ActionKeybinds,
@@ -573,6 +574,7 @@ impl Config {
             swap_pane_down: empty_action!(),
             swap_pane_up: empty_action!(),
             swap_pane_right: empty_action!(),
+            rotate_focused_split: empty_action!(),
             cycle_pane_next: empty_action!(),
             cycle_pane_previous: empty_action!(),
             last_pane: empty_action!(),
@@ -721,6 +723,7 @@ impl Config {
             apply_action!(keybinds.swap_pane_down, swap_pane_down, source);
             apply_action!(keybinds.swap_pane_up, swap_pane_up, source);
             apply_action!(keybinds.swap_pane_right, swap_pane_right, source);
+            apply_action!(keybinds.rotate_focused_split, rotate_focused_split, source);
             apply_action!(keybinds.last_pane, last_pane, source);
             apply_action!(keybinds.cycle_pane_next, cycle_pane_next, source);
             apply_action!(keybinds.cycle_pane_previous, cycle_pane_previous, source);
@@ -2415,6 +2418,13 @@ switch_tab = "prefix+?"
             vec![BindingTrigger::Prefix((
                 KeyCode::Char('l'),
                 KeyModifiers::SHIFT
+            ))]
+        );
+        assert_eq!(
+            binding_triggers(&kb.rotate_focused_split),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char(' '),
+                KeyModifiers::empty()
             ))]
         );
     }
